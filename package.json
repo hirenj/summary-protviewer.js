@@ -1,0 +1,20 @@
+{
+  "name": "summary-protviewer",
+  "version": "0.0.1",
+  "description": "Summary Protein Viewer",
+  "module": "js/summary_protviewer.js",
+  "dependencies": {
+    "glycan.js": "github:hirenj/glycan.js",
+    "mascp-jstools": "hirenj/mascp-jstools#nolegacy",
+    "sviewer": "github:hirenj/sviewer"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:hirenj/summary-protviewer.js.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Hiren Joshi <hirenj@gmail.com>",
+  "license": "MIT"
+}
