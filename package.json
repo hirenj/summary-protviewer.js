@@ -5,7 +5,7 @@
   "module": "js/summary_protviewer.js",
   "dependencies": {
     "glycan.js": "github:hirenj/glycan.js",
-    "mascp-jstools": "hirenj/mascp-jstools#nolegacy",
+    "mascp-jstools": "github:hirenj/mascp-jstools#nolegacy",
     "sviewer": "github:hirenj/sviewer"
   },
   "repository": {
