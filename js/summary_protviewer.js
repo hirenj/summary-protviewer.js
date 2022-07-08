@@ -340,6 +340,9 @@ class SummaryViewer extends GatorComponent {
       },50);
     });
 
+    this.addEventListener('sequenceChange', (ev) => {
+      this.updateSummaries();
+    });
 
     this.addEventListener('pandone', (ev) => {
       this.updateSummaries();
@@ -393,10 +396,11 @@ class SummaryViewer extends GatorComponent {
       radio_id++;
       summaries.appendChild(new_entry);
       new_entry = summaries.lastElementChild;
-      new IntersectionObserver(function([{intersectionRatio}]) {
-        new_entry.classList.toggle('overflowed-content', intersectionRatio < 0.1);
-      }, {root: new_entry}).observe(new_entry.querySelector('.sites').firstElementChild);
-
+      if (new_entry.querySelector('.sites').childNodes.length > 0) {
+        new IntersectionObserver(function([{intersectionRatio}]) {
+          new_entry.classList.toggle('overflowed-content', intersectionRatio < 0.1);
+        }, {root: new_entry}).observe(new_entry.querySelector('.sites').firstElementChild);
+      }
       let added = summaries.lastElementChild;
       let min_pixel = Math.min(...group.map( gr => gr.pixel || 100000 ));
       let max_pixel = Math.max(...group.map( gr => gr.pixel || 0 ));
