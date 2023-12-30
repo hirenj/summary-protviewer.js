@@ -4,9 +4,9 @@
   "description": "Summary Protein Viewer",
   "module": "js/summary_protviewer.js",
   "dependencies": {
-    "glycan.js": "github:hirenj/glycan.js",
+    "glycan.js": "github:CopenhagenCenterForGlycomics/glycan.js",
     "mascp-jstools": "github:hirenj/mascp-jstools#nolegacy",
-    "sviewer": "github:hirenj/sviewer"
+    "sviewer": "github:CopenhagenCenterForGlycomics/sviewer"
   },
   "repository": {
     "type": "git",
