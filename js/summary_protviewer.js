@@ -176,6 +176,11 @@ const summarise_site_group = (group) => {
 
 const SEQUENCE_LOOKUP = {
   'gal(b1-3)galnac' : 'Gal(b1-3)GalNAc',
+  'gal(b1-3)[glcnac(b1-6)]galnac' : 'Gal(b1-3)[GlcNAc(b1-6)]GalNAc',
+  'glcnac(b1-3)[glcnac(b1-6)]galnac': 'GlcNAc(b1-3)[GlcNAc(b1-6)]GalNAc',
+  'glcnac(b1-3)galnac' : 'GlcNAc(b1-3)GalNAc',
+  'glcnac(b1-2)man(a1-3)[man(a1-6)]man(b1-4)glcnac(b1-4)glcnac' : 'GlcNAc(b1-2)Man(a1-3)[Man(a1-6)]Man(b1-4)GlcNAc(b1-4)GlcNAc',
+  'man(a1-2)man(a1-3)[man(a1-3)[man(a1-6)]man(a1-6)]man(b1-4)glcnac(b1-4)glcnac' : 'Man(a1-2)Man(a1-3)[Man(a1-3)[Man(a1-6)]Man(a1-6)]Man(b1-4)GlcNAc(b1-4)GlcNAc',
   'man(a1-3)[man(a1-6)]man(b1-4)glcnac(b1-4)glcnac' : 'Man(a1-3)[Man(a1-6)]Man(b1-4)GlcNAc(b1-4)GlcNAc',
   'galnac' : 'GalNAc',
   'glcnac' : 'GlcNAc',
