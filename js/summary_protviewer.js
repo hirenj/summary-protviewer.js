@@ -1,6 +1,8 @@
 import MASCP from 'mascp-jstools';
 import 'sviewer/js/sviewer/lite';
 
+const ELEMENT_NAME = 'ccg-summary-protviewer';
+
 const GatorComponent = MASCP.GatorComponent;
 const TrackRendererComponent = MASCP.TrackRendererComponent;
 const Track = MASCP.Track;
@@ -21,7 +23,7 @@ const entry_template = document.createElement('template');
 
 entry_template.innerHTML = `
 <div class="site_summary">
-<x-sviewer-lite></x-sviewer-lite>
+<ccg-sviewer-lite></ccg-sviewer-lite>
 <div class="count"></div>
 </div>
 `
@@ -48,7 +50,7 @@ style_tmpl.innerHTML = `
   position: absolute;
   top: 0px;
   height: calc(100% - 1px - var(--bottom-margin-size));
-  border-bottom: solid #999 var(--bottom-margin-size);  
+  border-bottom: solid #999 var(--bottom-margin-size);
 
   flex-direction: column;
   justify-content: flex-end;
@@ -135,7 +137,7 @@ input[type="radio"]:checked+.summary_group.overflowed-content:after {
   color: #222;
   margin-right: 5px;
 }
-.site_summary x-sviewer-lite {
+.site_summary ccg-sviewer-lite {
   --sugar-padding-side: 0.2;
   --sugar-padding-top: 0.2;
   height: 100%;
@@ -197,7 +199,7 @@ const build_summary_elements = (summary) => {
     }
     let new_entry = entry_template.content.cloneNode(true);
     new_entry.querySelector('div.count').append(count);
-    new_entry.querySelector('x-sviewer-lite').textContent = SEQUENCE_LOOKUP[content];
+    new_entry.querySelector('ccg-sviewer-lite').textContent = SEQUENCE_LOOKUP[content];
     return new_entry;
   }).filter( entry => entry);
 }
@@ -315,7 +317,7 @@ class SummaryViewer extends GatorComponent {
         }
         if (composition == 'hex' || composition == 'man') {
           indexes = indexes_hex;
-        }        
+        }
         for (let [start,end] of values ) {
           while (start <= end) {
             indexes[start++ - 1] = 1;
@@ -333,7 +335,7 @@ class SummaryViewer extends GatorComponent {
 
     this.composition_renderer = composition_renderer;
 
-    for (let renderer of this.ownerDocument.querySelectorAll(`x-trackrenderer[renderer="${this.getAttribute('id')}"]`)) {
+    for (let renderer of this.ownerDocument.querySelectorAll(`ccg-trackrenderer[renderer="${this.getAttribute('id')}"]`)) {
       renderer.addEventListener('rendered', () => {
         this.updateSummaries();
       });
@@ -357,7 +359,7 @@ class SummaryViewer extends GatorComponent {
   updateSummaries() {
     this.renderer.clearTrack(MASCP.getLayer('composition_summary'));
     this.setSummaries([]);
-    for (let renderer of [...this.ownerDocument.querySelectorAll(`x-trackrenderer[renderer="${this.getAttribute('id')}"]`)]) {
+    for (let renderer of [...this.ownerDocument.querySelectorAll(`ccg-trackrenderer[renderer="${this.getAttribute('id')}"]`)]) {
       let visible = renderer.visible_items;
       if ( ! visible ) {
         continue;
@@ -425,7 +427,7 @@ class SummaryViewer extends GatorComponent {
   }
 }
 
-customElements.define('x-summary-protviewer',SummaryViewer);
+customElements.define(ELEMENT_NAME,SummaryViewer);
 
 
 export default SummaryViewer
