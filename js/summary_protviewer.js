@@ -1,5 +1,5 @@
 import MASCP from 'mascp-jstools';
-import 'sviewer/js/sviewer/lite';
+import 'sviewer/lite';
 
 const ELEMENT_NAME = 'ccg-summary-protviewer';
 
