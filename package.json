@@ -2,6 +2,7 @@
   "name": "summary-protviewer",
   "version": "0.0.1",
   "description": "Summary Protein Viewer",
+  "type" : "module",
   "module": "js/summary_protviewer.js",
   "dependencies": {
     "glycan.js": "github:CopenhagenCenterForGlycomics/glycan.js",
