@@ -1,7 +1,11 @@
 import MASCP from 'mascp-jstools';
 import 'sviewer/lite';
+import {CondensedIupac, Sugar, SugarAwareLayoutFishEye, SVGRenderer} from 'glycan.js';
 
 const ELEMENT_NAME = 'ccg-summary-protviewer';
+
+const Iupac = CondensedIupac.IO;
+const IupacSugar = Iupac(Sugar);
 
 const GatorComponent = MASCP.GatorComponent;
 const TrackRendererComponent = MASCP.TrackRendererComponent;
@@ -123,8 +127,13 @@ input[type="radio"]:checked+.summary_group.overflowed-content:after {
 }
 
 .site_summary {
-  height: calc( 0.5 * var(--base-summary-size) );
-  max-width: var(--base-summary-size);
+  /* Defaults match the old fixed-size box exactly, so an entry looks
+     the same as before until its composition's real shape (see
+     measure_aspect_ratio/set_shape_vars) has been measured and applied. */
+  --entry-height-fraction: 1;
+  --entry-width-fraction: 1;
+  height: calc( 0.5 * var(--base-summary-size) * var(--entry-height-fraction) );
+  max-width: calc( 1.5 * var(--base-summary-size) );
   display: flex;
   flex-direction: row;
   background: var(--base-background);
@@ -141,7 +150,7 @@ input[type="radio"]:checked+.summary_group.overflowed-content:after {
   --sugar-padding-side: 0.2;
   --sugar-padding-top: 0.2;
   height: 100%;
-  width: calc( 0.5 * var(--base-summary-size) );
+  width: calc( 0.5 * var(--base-summary-size) * var(--entry-width-fraction) );
 }
 </style>
 `
@@ -201,6 +210,83 @@ const SEQUENCE_LOOKUP = {
   '{hso3(u1-6)glcnac(b1-3)[hso3(u1-6)]gal(b1-4)@y3a}n' : '{HSO3(u1-6)GlcNAc(b1-3)[HSO3(u1-6)]Gal(b1-4)@y3a}n'
 }
 
+// How much taller a composition's icon should get relative to how wide it
+// is. Measured once per unique composition (there are only ever as many as
+// SEQUENCE_LOOKUP above has entries, so this is cheap in practice) by
+// actually laying it out off-screen with glycan.js - the same way
+// ensure_sugar_icon does in mascp-jstools's TrackRendererComponent.js - not
+// guessed from the IUPAC string, since residue sizes and branch spacing
+// aren't uniform enough for that to be reliable. Cache entries start as the
+// in-flight Promise (so two entries needing the same composition share one
+// render instead of racing) and get overwritten with the resolved number
+// once it's ready, so later lookups are instant.
+const aspect_ratio_cache = new Map();
+
+const measure_aspect_ratio = (sequence) => {
+  if (aspect_ratio_cache.has(sequence)) {
+    return Promise.resolve(aspect_ratio_cache.get(sequence));
+  }
+  const promise = (async () => {
+    // getBBox() (used by scaleToFit below) needs the element actually in the
+    // rendered document to report real numbers in every browser - placed
+    // off-screen rather than hidden via display/visibility, which breaks it
+    // in some browsers (see the equivalent dance in ensure_sugar_icon).
+    let holder = document.createElement('div');
+    holder.style.position = 'absolute';
+    holder.style.left = '-9999px';
+    holder.style.top = '-9999px';
+    document.body.appendChild(holder);
+    try {
+      let sug = new IupacSugar();
+      sug.sequence = sequence;
+      let renderer = new SVGRenderer(holder, SugarAwareLayoutFishEye);
+      renderer.addSugar(sug);
+      await renderer.refresh();
+      renderer.scaleToFit({ side: 0.25, top: 0.5 });
+      let viewBox = renderer.element.canvas.getAttribute('viewBox') || '';
+      let [,,width,height] = viewBox.split(' ').map(parseFloat);
+      return (width && height) ? width/height : 1;
+    } catch (e) {
+      return 1;
+    } finally {
+      holder.parentNode.removeChild(holder);
+    }
+  })();
+  aspect_ratio_cache.set(sequence, promise);
+  promise.then( ratio => aspect_ratio_cache.set(sequence, ratio) );
+  return promise;
+};
+
+// Tunable: how far a composition's height can move from today's uniform
+// box (1) in either direction. A tall/narrow structure (small ratio) wants
+// more than 1; a flat/wide one (large ratio) wants less. Height and width
+// scale together so each icon keeps roughly the same on-screen AREA as
+// before (height_fraction * width_fraction ~= 1) - it's reshaped, not
+// inflated, so the row still packs as compactly as it did before.
+const MIN_HEIGHT_FRACTION = 0.6;
+const MAX_HEIGHT_FRACTION = 2;
+
+const set_shape_vars = (el, ratio) => {
+  if ( ! el.isConnected) {
+    // This entry's summary was rebuilt (or scrolled out and discarded)
+    // before the measurement resolved - nothing to size any more.
+    return;
+  }
+  let height_fraction = Math.sqrt(1 / ratio);
+  height_fraction = Math.max(MIN_HEIGHT_FRACTION, Math.min(MAX_HEIGHT_FRACTION, height_fraction));
+  el.style.setProperty('--entry-height-fraction', height_fraction.toFixed(3));
+  el.style.setProperty('--entry-width-fraction', (ratio * height_fraction).toFixed(3));
+};
+
+const apply_shape = (el, sequence) => {
+  let cached = aspect_ratio_cache.get(sequence);
+  if (typeof cached === 'number') {
+    set_shape_vars(el, cached);
+    return;
+  }
+  measure_aspect_ratio(sequence).then( ratio => set_shape_vars(el, ratio) );
+};
+
 const build_summary_elements = (summary) => {
   return Object.entries(summary).map( ([content,count]) => {
     if ( ! SEQUENCE_LOOKUP[content]) {
@@ -209,6 +295,7 @@ const build_summary_elements = (summary) => {
     let new_entry = entry_template.content.cloneNode(true);
     new_entry.querySelector('div.count').append(count);
     new_entry.querySelector('ccg-sviewer-lite').textContent = SEQUENCE_LOOKUP[content];
+    apply_shape(new_entry.querySelector('.site_summary'), SEQUENCE_LOOKUP[content]);
     return new_entry;
   }).filter( entry => entry);
 }
