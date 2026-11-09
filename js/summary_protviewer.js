@@ -189,7 +189,16 @@ const SEQUENCE_LOOKUP = {
   'man' : 'Man',
   'fuc' : 'Fuc',
   'xyl' : 'Xyl',
-  'phospho' : 'P'
+  'phospho' : 'P',
+  // GAG-linker classes (see ccg-data-schemas/glycan-classes.json
+  // GAG/CS/HS/KS, and the matching GAG_LINKER_STRUCTURES/KS_STRUCTURE in
+  // ccg-shared-elements's static/msdata.packed.renderer.js) - without an
+  // entry here, build_summary_elements() drops them from the summary
+  // instead of just failing to render an icon for them.
+  'galnac(b1-4)glca(b1-3)gal(b1-3)gal(b1-4)xyl' : 'GalNAc(b1-4)GlcA(b1-3)Gal(b1-3)Gal(b1-4)Xyl',
+  'glcnac(b1-4)glca(b1-3)gal(b1-3)gal(b1-4)xyl' : 'GlcNAc(b1-4)GlcA(b1-3)Gal(b1-3)Gal(b1-4)Xyl',
+  'hexnac(b1-4)glca(b1-3)gal(b1-3)gal(b1-4)xyl' : 'HexNAc(b1-4)GlcA(b1-3)Gal(b1-3)Gal(b1-4)Xyl',
+  '{hso3(u1-6)glcnac(b1-3)[hso3(u1-6)]gal(b1-4)@y3a}n' : '{HSO3(u1-6)GlcNAc(b1-3)[HSO3(u1-6)]Gal(b1-4)@y3a}n'
 }
 
 const build_summary_elements = (summary) => {
