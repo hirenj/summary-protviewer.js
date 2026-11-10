@@ -335,7 +335,10 @@ const set_shape_vars = (el, size, reference_height) => {
 const apply_shape = (el, sequence) => {
   // Both measurements go through the same cache/promise-sharing machinery,
   // so asking for the reference every time costs nothing once it's warm.
-  Promise.all([measure_natural_size(sequence), measure_natural_size(REFERENCE_SEQUENCE)])
+  // Returned (not fire-and-forget) so callers - see build_summary_elements
+  // below - can tell when every entry in a group has its real size, not
+  // just the uniform default it starts out at.
+  return Promise.all([measure_natural_size(sequence), measure_natural_size(REFERENCE_SEQUENCE)])
     .then( ([size, reference]) => {
       if ( ! el.isConnected) {
         // This entry's summary was rebuilt (or scrolled out and discarded)
@@ -346,17 +349,26 @@ const apply_shape = (el, sequence) => {
     });
 };
 
+// Returns both the entry elements (append these, same as before) and
+// `ready`, a Promise that resolves once every entry's real size has been
+// applied - sizing is async (measure_natural_size), so .sites's layout
+// right after appending these still reflects the uniform default size, not
+// what it'll actually look like. Anything that needs to measure the real,
+// final layout (see the overflow check in setSummaries) has to wait for
+// this first.
 const build_summary_elements = (summary) => {
-  return Object.entries(summary).map( ([content,count]) => {
+  let pending = [];
+  let entries = Object.entries(summary).map( ([content,count]) => {
     if ( ! SEQUENCE_LOOKUP[content]) {
       return;
     }
     let new_entry = entry_template.content.cloneNode(true);
     new_entry.querySelector('div.count').append(count);
     new_entry.querySelector('ccg-sviewer-lite').textContent = SEQUENCE_LOOKUP[content];
-    apply_shape(new_entry.querySelector('.site_summary'), SEQUENCE_LOOKUP[content]);
+    pending.push(apply_shape(new_entry.querySelector('.site_summary'), SEQUENCE_LOOKUP[content]));
     return new_entry;
   }).filter( entry => entry);
+  return { entries, ready: Promise.all(pending) };
 }
 
 const tally_compositions = function(sequence,peptides) {
@@ -551,33 +563,45 @@ class SummaryViewer extends GatorComponent {
     for (let group of sitegroups) {
       let site_summary = summarise_site_group(group);
       let new_entry = summary_template.content.cloneNode(true);
-      let summary_elements = build_summary_elements(site_summary);
+      let { entries: summary_elements, ready } = build_summary_elements(site_summary);
       new_entry.querySelector('label .sites').append(...summary_elements);
       new_entry.querySelector('label').setAttribute('for',`radio_${radio_id}`);
       new_entry.querySelector('input').setAttribute('id',`radio_${radio_id}`);
       radio_id++;
       summaries.appendChild(new_entry);
       new_entry = summaries.lastElementChild;
-      if (new_entry.querySelector('.sites').childNodes.length > 0) {
-        // new_entry's own classification here gates the CSS rule
-        // (input:checked+.summary_group.overflowed-content .sites) that
-        // widens .sites to 1000% once the group is opened - which moves
-        // the very element below being observed. Re-evaluating while
-        // open fed that geometry change back into this callback: toggle
-        // the class off, width snaps back, geometry shifts again, ratio
-        // crosses back over 0.1, toggle it back on - an infinite
-        // open/close loop once a composition's size put the ratio right
-        // at that threshold. Overflow only matters (and is only safe to
-        // reclassify) in the compact, collapsed view, so skip entirely
-        // while the group is checked - it keeps whatever classification
-        // it had from the last time it was collapsed.
-        let radio = new_entry.previousElementSibling;
-        new IntersectionObserver(function([{intersectionRatio}]) {
-          if (radio && radio.checked) {
+      let sites_el = new_entry.querySelector('.sites');
+      if (sites_el.childNodes.length > 0) {
+        // Measured directly (does the content need more height than is
+        // actually available) once sizing has actually been applied, not
+        // via an IntersectionObserver watching one particular child's
+        // visibility (tried earlier, twice): that only reliably caught
+        // overflow when the FIRST child specifically was the one being
+        // clipped - with align-items:flex-end, a second, wrapped row can
+        // overflow while the first (bottom) row stays fully visible, so a
+        // group with genuinely more to show never got classified as
+        // overflowing at all. It also reacted live to the group's own
+        // open/close state, which changes .sites's width (see the
+        // input:checked+.overflowed-content CSS rule) and so moved the
+        // very child being observed - an open/close feedback loop once a
+        // composition's size put the ratio right at the 0.1 threshold.
+        //
+        // Checking scrollHeight synchronously, right after appending,
+        // doesn't work either: sizing is async (measure_natural_size), so
+        // every entry is still at its uniform default size at that exact
+        // moment and never looks like it overflows. `ready` (from
+        // build_summary_elements) resolves once every entry in this group
+        // has its real, final size applied - only then does .sites's
+        // layout reflect what it'll actually look like.
+        ready.then( () => {
+          if ( ! new_entry.isConnected) {
+            // This group was rebuilt (or removed) before sizing finished.
             return;
           }
-          new_entry.classList.toggle('overflowed-content', intersectionRatio < 0.1);
-        }, {root: new_entry}).observe(new_entry.querySelector('.sites').firstElementChild);
+          if (sites_el.scrollHeight > sites_el.clientHeight + 1) {
+            new_entry.classList.add('overflowed-content');
+          }
+        });
       }
       let added = summaries.lastElementChild;
       let min_pixel = Math.min(...group.map( gr => gr.pixel || 100000 ));
