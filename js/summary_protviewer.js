@@ -593,12 +593,25 @@ class SummaryViewer extends GatorComponent {
         // build_summary_elements) resolves once every entry in this group
         // has its real, final size applied - only then does .sites's
         // layout reflect what it'll actually look like.
+        //
+        // scrollHeight itself then turned out not to be reliable either -
+        // WebKit/Safari in particular doesn't always report a flex-wrap
+        // container's full wrapped content height through it. Checking
+        // actual child geometry instead: align-items:flex-end anchors
+        // content to the bottom, so overflow here specifically means a
+        // wrapped child's box extends above .sites's own top edge
+        // (clipped there by #summaries's overflow:hidden) - that's true
+        // regardless of how any one browser computes scrollHeight.
         ready.then( () => {
           if ( ! new_entry.isConnected) {
             // This group was rebuilt (or removed) before sizing finished.
             return;
           }
-          if (sites_el.scrollHeight > sites_el.clientHeight + 1) {
+          let top = sites_el.getBoundingClientRect().top;
+          let overflowing = [...sites_el.children].some(
+            child => child.getBoundingClientRect().top < top - 1
+          );
+          if (overflowing) {
             new_entry.classList.add('overflowed-content');
           }
         });
