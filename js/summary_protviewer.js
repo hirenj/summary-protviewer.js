@@ -314,6 +314,17 @@ const MIN_FRACTION = 0.6;
 // entirely.
 const SCALE_EXPONENT = 0.6;
 
+// ccg-sviewer-lite always scales its content to fill whatever box it's
+// given, so the reference residue (Tn/GalNAc, exactly 1 by definition,
+// unaffected by SCALE_EXPONENT) renders at exactly today's default box
+// size regardless of anything else - it can only ever look too big
+// relative to other compositions, never shrink on its own. Applied after
+// the exponent and before clamping, so it uniformly pulls everything
+// (including the reference itself) down a bit without disturbing the
+// relative proportions the exponent already established, and without
+// affecting anything already pinned at MIN/MAX_FRACTION.
+const BASELINE_SCALE = 0.85;
+
 const set_shape_vars = (el, size, reference_height) => {
   // No isConnected check here: this also runs synchronously from
   // apply_shape's cache-hit path, which fires from inside
@@ -325,7 +336,7 @@ const set_shape_vars = (el, size, reference_height) => {
   // async path (see apply_shape below), where the entry may have been
   // rebuilt or removed by the time the measurement resolves.
   let scale = 1 / reference_height;
-  let clamp = (v) => Math.max(MIN_FRACTION, Math.min(MAX_FRACTION, Math.pow(v, SCALE_EXPONENT)));
+  let clamp = (v) => Math.max(MIN_FRACTION, Math.min(MAX_FRACTION, Math.pow(v, SCALE_EXPONENT) * BASELINE_SCALE));
   let height_fraction = clamp(size.height * scale);
   let width_fraction = clamp(size.width * scale);
   el.style.setProperty('--entry-height-fraction', height_fraction.toFixed(3));
