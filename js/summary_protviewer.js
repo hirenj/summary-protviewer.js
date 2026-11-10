@@ -38,7 +38,12 @@ const style_tmpl = document.createElement('template');
 style_tmpl.innerHTML = `
 <style>
 #summaries {
-  --base-summary-size: 4em;
+  --base-summary-size: 6em;
+  /* Separate from --base-summary-size on purpose: horizontal space is
+     tighter (groups sit side by side along the sequence), so this can be
+     tuned independently without every height change also inflating each
+     glycan's width by the same factor. */
+  --base-summary-width: 3em;
   --bottom-margin-size: 2px;
   --base-background: #eee;
   --selection-color: var(#f00,--selection-color);
@@ -146,7 +151,7 @@ input[type="radio"]:checked+.summary_group.overflowed-content:after {
   --entry-width-fraction: 1;
   height: calc( 0.5 * var(--base-summary-size) * var(--entry-height-fraction) );
   max-height: 100%;
-  max-width: calc( 1.5 * var(--base-summary-size) );
+  max-width: calc( 1.5 * var(--base-summary-width) );
   display: flex;
   flex-direction: row;
   background: var(--base-background);
@@ -172,7 +177,7 @@ input[type="radio"]:checked+.summary_group.overflowed-content:after {
   --sugar-padding-side: 0.2;
   --sugar-padding-top: 0.2;
   height: 100%;
-  width: calc( 0.5 * var(--base-summary-size) * var(--entry-width-fraction) );
+  width: calc( 0.5 * var(--base-summary-width) * var(--entry-width-fraction) );
 }
 </style>
 `
@@ -622,7 +627,7 @@ class SummaryViewer extends GatorComponent {
       }
       if (Math.abs(max_pixel - min_pixel) < 10) {
         added.style.left = `${Math.floor((max_pixel+min_pixel)/2)}px`;
-        added.style.width = 'var(--base-summary-size)';//`${10}px`;        
+        added.style.width = 'var(--base-summary-width)';//`${10}px`;
         added.style.transform = 'translate(-50%)';
       } else if (max_pixel) {
         added.style.left = `${Math.floor((max_pixel+min_pixel)/2)}px`;
