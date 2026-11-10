@@ -279,20 +279,31 @@ const measure_natural_size = (sequence) => {
   return promise;
 };
 
-// A lone residue's own natural size defines "1 unit" at today's default box
-// size (so the common, already-fine case - a single monosaccharide - looks
-// exactly as it did before), and every other composition is scaled by the
-// SAME factor from there. That's the actual goal here: one monosaccharide
-// should render at roughly the same pixel size everywhere, so a structure
-// with more residues takes proportionally more room instead of being
-// squeezed/stretched to fit a fixed box regardless of how big it really is.
-const REFERENCE_SEQUENCE = SEQUENCE_LOOKUP['galnac'];
-
-// Sanity ceiling only - the panel itself is fixed (see its CSS), so this
-// just stops one pathological measurement from asking for an absurd box;
-// .site_summary's own max-height is what actually binds for a real
-// oversized structure, same graceful degrade as a missing icon.
-const MAX_FRACTION = 6;
+// Anchoring the scale on the smallest structure (a single residue) and
+// letting bigger ones grow from there (tried first) can't give exact
+// per-residue consistency while the panel itself stays a fixed height:
+// anything tall enough eventually needs more height than the panel has and
+// gets capped back down (by .site_summary's own max-height), which is
+// exactly the same "smaller-than-true-scale box ->
+// smaller residues" problem in a different place. The only way to
+// guarantee every residue is genuinely the same size everywhere AND have
+// everything fit is to anchor the other way: calibrate so the LARGEST
+// known composition exactly fills the available space, and scale every
+// other composition down from that same single factor. Smaller
+// compositions render smaller than "today's default box" as a result -
+// the explicit trade for exact consistency.
+//
+// Measured once, from every composition this component can ever show
+// (SEQUENCE_LOOKUP is the complete, fixed set - nothing here is arbitrary
+// user data), and cached for the component's whole lifetime.
+let global_scale_promise = null;
+const get_global_scale = () => {
+  if ( ! global_scale_promise) {
+    global_scale_promise = Promise.all(Object.values(SEQUENCE_LOOKUP).map(measure_natural_size))
+      .then( sizes => 1 / Math.max(...sizes.map( ({height}) => height )) );
+  }
+  return global_scale_promise;
+};
 
 // A floor on width (and, symmetrically, height) specifically: a long
 // linear chain with no branches (e.g. the GAG-linker classes - 5 residues
@@ -303,29 +314,7 @@ const MAX_FRACTION = 6;
 // longer being perfectly to-scale for the narrowest structures.
 const MIN_FRACTION = 0.6;
 
-// Deliberately 1 (pure linear/proportional scaling), not sub-linear: an
-// exponent below 1 was tried to stop branched structures (which get extra
-// layout spacing between siblings beyond what their residue count alone
-// would need) from looking too large in absolute box size, but since
-// ccg-sviewer-lite always scales its content to fill whatever box it's
-// given, a smaller-than-true-scale box for a bigger structure also renders
-// each of ITS residues smaller than the reference's - exact per-residue
-// consistency needs the box to grow exactly proportionally, no damping.
-// A branched structure's own residues end up genuinely bigger on screen as
-// a result (more absolute space, same per-residue size) - that's the
-// explicit trade accepted here over consistency.
-const SCALE_EXPONENT = 1;
-
-// ccg-sviewer-lite always scales its content to fill whatever box it's
-// given, so the reference residue (Tn/GalNAc, exactly 1 by definition)
-// renders at exactly today's default box size regardless of anything
-// else. A plain multiplicative constant (unlike SCALE_EXPONENT) doesn't
-// disturb relative proportions between compositions - it uniformly pulls
-// every fraction down a bit, including the reference's own otherwise-fixed
-// 1, without affecting anything already pinned at MIN/MAX_FRACTION.
-const BASELINE_SCALE = 0.85;
-
-const set_shape_vars = (el, size, reference_height) => {
+const set_shape_vars = (el, size, scale) => {
   // No isConnected check here: this also runs synchronously from
   // apply_shape's cache-hit path, which fires from inside
   // build_summary_elements - *before* the cloned entry has been inserted
@@ -335,28 +324,26 @@ const set_shape_vars = (el, size, reference_height) => {
   // the point this ran. Staleness only needs checking on the genuinely
   // async path (see apply_shape below), where the entry may have been
   // rebuilt or removed by the time the measurement resolves.
-  let scale = 1 / reference_height;
-  let clamp = (v) => Math.max(MIN_FRACTION, Math.min(MAX_FRACTION, Math.pow(v, SCALE_EXPONENT) * BASELINE_SCALE));
-  let height_fraction = clamp(size.height * scale);
-  let width_fraction = clamp(size.width * scale);
+  let height_fraction = Math.max(MIN_FRACTION, size.height * scale);
+  let width_fraction = Math.max(MIN_FRACTION, size.width * scale);
   el.style.setProperty('--entry-height-fraction', height_fraction.toFixed(3));
   el.style.setProperty('--entry-width-fraction', width_fraction.toFixed(3));
 };
 
 const apply_shape = (el, sequence) => {
-  // Both measurements go through the same cache/promise-sharing machinery,
-  // so asking for the reference every time costs nothing once it's warm.
+  // Both go through cache/promise-sharing machinery of their own, so
+  // asking for the scale every time costs nothing once it's warm.
   // Returned (not fire-and-forget) so callers - see build_summary_elements
   // below - can tell when every entry in a group has its real size, not
   // just the uniform default it starts out at.
-  return Promise.all([measure_natural_size(sequence), measure_natural_size(REFERENCE_SEQUENCE)])
-    .then( ([size, reference]) => {
+  return Promise.all([measure_natural_size(sequence), get_global_scale()])
+    .then( ([size, scale]) => {
       if ( ! el.isConnected) {
         // This entry's summary was rebuilt (or scrolled out and discarded)
         // before the off-screen measurement resolved - nothing to size.
         return;
       }
-      set_shape_vars(el, size, reference.height);
+      set_shape_vars(el, size, scale);
     });
 };
 
