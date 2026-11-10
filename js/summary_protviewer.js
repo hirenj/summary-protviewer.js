@@ -303,26 +303,26 @@ const MAX_FRACTION = 6;
 // longer being perfectly to-scale for the narrowest structures.
 const MIN_FRACTION = 0.6;
 
-// Branch points get extra spacing from the layout engine (reserved room
-// between siblings for visual clarity) well beyond what their residue
-// count alone would need, so a strictly linear per-residue scale
-// overshoots even modestly-branched structures (e.g. the 3-residue O-glycan
-// core 2, Gal(b1-3)[GlcNAc(b1-6)]GalNAc, came out too large). Raising the
-// measured ratio to this power compresses that growth - 1 is the
-// reference's own size unaffected either way, exponents below 1 shrink how
-// much bigger anything else looks without flattening differences away
-// entirely.
-const SCALE_EXPONENT = 0.6;
+// Deliberately 1 (pure linear/proportional scaling), not sub-linear: an
+// exponent below 1 was tried to stop branched structures (which get extra
+// layout spacing between siblings beyond what their residue count alone
+// would need) from looking too large in absolute box size, but since
+// ccg-sviewer-lite always scales its content to fill whatever box it's
+// given, a smaller-than-true-scale box for a bigger structure also renders
+// each of ITS residues smaller than the reference's - exact per-residue
+// consistency needs the box to grow exactly proportionally, no damping.
+// A branched structure's own residues end up genuinely bigger on screen as
+// a result (more absolute space, same per-residue size) - that's the
+// explicit trade accepted here over consistency.
+const SCALE_EXPONENT = 1;
 
 // ccg-sviewer-lite always scales its content to fill whatever box it's
-// given, so the reference residue (Tn/GalNAc, exactly 1 by definition,
-// unaffected by SCALE_EXPONENT) renders at exactly today's default box
-// size regardless of anything else - it can only ever look too big
-// relative to other compositions, never shrink on its own. Applied after
-// the exponent and before clamping, so it uniformly pulls everything
-// (including the reference itself) down a bit without disturbing the
-// relative proportions the exponent already established, and without
-// affecting anything already pinned at MIN/MAX_FRACTION.
+// given, so the reference residue (Tn/GalNAc, exactly 1 by definition)
+// renders at exactly today's default box size regardless of anything
+// else. A plain multiplicative constant (unlike SCALE_EXPONENT) doesn't
+// disturb relative proportions between compositions - it uniformly pulls
+// every fraction down a bit, including the reference's own otherwise-fixed
+// 1, without affecting anything already pinned at MIN/MAX_FRACTION.
 const BASELINE_SCALE = 0.85;
 
 const set_shape_vars = (el, size, reference_height) => {
