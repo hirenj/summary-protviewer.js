@@ -38,7 +38,7 @@ const style_tmpl = document.createElement('template');
 style_tmpl.innerHTML = `
 <style>
 #summaries {
-  --base-summary-size: 3em;
+  --base-summary-size: 6em;
   --bottom-margin-size: 2px;
   --base-background: #eee;
   --selection-color: var(#f00,--selection-color);
