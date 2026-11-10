@@ -46,6 +46,13 @@ style_tmpl.innerHTML = `
 
   position: relative;
   width: 100%;
+  /* Deliberately fixed, not content-driven: letting this grow/shrink with
+     what's inside it (tried earlier) resizes the whole widget's layout,
+     which can retrigger the very rendered/zoomdone/pandone events that
+     rebuild this panel - a feedback loop that showed up as constant
+     redrawing. An oversized composition is capped instead (see
+     .site_summary's max-height) and just renders a bit smaller than its
+     true per-residue scale, same graceful-degrade as a missing icon. */
   height: calc(var(--base-summary-size) + 1px + var(--bottom-margin-size));
   overflow: hidden;
 }
@@ -113,9 +120,10 @@ input[type="radio"]:checked+.summary_group.overflowed-content .sites {
 }
 
 input[type="radio"]:checked+.summary_group .sites .site_summary {
+  /* Only the color changes here - box-sizing/border-width are set
+     unconditionally on .site_summary itself so this never resizes it. */
   box-shadow: 2px 2px 3px rgba(100,100,100,0.5);
-  border: solid var(--selection-color) 1px;
-  box-sizing: border-box;
+  border-color: var(--selection-color);
 }
 
 input[type="radio"]:checked+.summary_group .sites .site_summary .count {
@@ -128,16 +136,30 @@ input[type="radio"]:checked+.summary_group.overflowed-content:after {
 
 .site_summary {
   /* Defaults match the old fixed-size box exactly, so an entry looks
-     the same as before until its composition's real shape (see
-     measure_aspect_ratio/set_shape_vars) has been measured and applied. */
+     the same as before until its composition's real size (see
+     measure_natural_size/set_shape_vars) has been measured and applied.
+     max-height caps it at the (fixed) panel budget - ccg-sviewer-lite
+     scales its own content to fit whatever box it's given, so an
+     oversized composition just renders a bit smaller than its true
+     per-residue scale instead of being clipped or growing the panel. */
   --entry-height-fraction: 1;
   --entry-width-fraction: 1;
   height: calc( 0.5 * var(--base-summary-size) * var(--entry-height-fraction) );
+  max-height: 100%;
   max-width: calc( 1.5 * var(--base-summary-size) );
   display: flex;
   flex-direction: row;
   background: var(--base-background);
   border-radius: 5px;
+  /* Always present (transparent when not selected) and always border-box,
+     so opening a group - which colors this border in, see the :checked
+     rule below - never changes this box's actual pixel dimensions. It
+     used to only gain a border (and switch box-sizing) once selected,
+     shifting the content area by ~2px right at the moment of opening -
+     enough for ccg-sviewer-lite to re-scale its internal SVG, which read
+     as a flicker exactly when a group opened. */
+  box-sizing: border-box;
+  border: solid transparent 1px;
 }
 .site_summary .count {
   font-family: Helvetica, Arial, sans-serif;
@@ -210,21 +232,21 @@ const SEQUENCE_LOOKUP = {
   '{hso3(u1-6)glcnac(b1-3)[hso3(u1-6)]gal(b1-4)@y3a}n' : '{HSO3(u1-6)GlcNAc(b1-3)[HSO3(u1-6)]Gal(b1-4)@y3a}n'
 }
 
-// How much taller a composition's icon should get relative to how wide it
-// is. Measured once per unique composition (there are only ever as many as
-// SEQUENCE_LOOKUP above has entries, so this is cheap in practice) by
-// actually laying it out off-screen with glycan.js - the same way
+// Each composition's natural (width,height) in glycan.js's own layout units
+// - not just their ratio - measured once per unique composition (there are
+// only ever as many as SEQUENCE_LOOKUP above has entries, so this is cheap
+// in practice) by actually laying it out off-screen, the same way
 // ensure_sugar_icon does in mascp-jstools's TrackRendererComponent.js - not
 // guessed from the IUPAC string, since residue sizes and branch spacing
 // aren't uniform enough for that to be reliable. Cache entries start as the
 // in-flight Promise (so two entries needing the same composition share one
-// render instead of racing) and get overwritten with the resolved number
-// once it's ready, so later lookups are instant.
-const aspect_ratio_cache = new Map();
+// render instead of racing) and get overwritten with the resolved
+// {width,height} once it's ready, so later lookups are instant.
+const natural_size_cache = new Map();
 
-const measure_aspect_ratio = (sequence) => {
-  if (aspect_ratio_cache.has(sequence)) {
-    return Promise.resolve(aspect_ratio_cache.get(sequence));
+const measure_natural_size = (sequence) => {
+  if (natural_size_cache.has(sequence)) {
+    return Promise.resolve(natural_size_cache.get(sequence));
   }
   const promise = (async () => {
     // getBBox() (used by scaleToFit below) needs the element actually in the
@@ -245,46 +267,83 @@ const measure_aspect_ratio = (sequence) => {
       renderer.scaleToFit({ side: 0.25, top: 0.5 });
       let viewBox = renderer.element.canvas.getAttribute('viewBox') || '';
       let [,,width,height] = viewBox.split(' ').map(parseFloat);
-      return (width && height) ? width/height : 1;
+      return (width && height) ? {width,height} : {width: 1, height: 1};
     } catch (e) {
-      return 1;
+      return {width: 1, height: 1};
     } finally {
       holder.parentNode.removeChild(holder);
     }
   })();
-  aspect_ratio_cache.set(sequence, promise);
-  promise.then( ratio => aspect_ratio_cache.set(sequence, ratio) );
+  natural_size_cache.set(sequence, promise);
+  promise.then( size => natural_size_cache.set(sequence, size) );
   return promise;
 };
 
-// Tunable: how far a composition's height can move from today's uniform
-// box (1) in either direction. A tall/narrow structure (small ratio) wants
-// more than 1; a flat/wide one (large ratio) wants less. Height and width
-// scale together so each icon keeps roughly the same on-screen AREA as
-// before (height_fraction * width_fraction ~= 1) - it's reshaped, not
-// inflated, so the row still packs as compactly as it did before.
-const MIN_HEIGHT_FRACTION = 0.6;
-const MAX_HEIGHT_FRACTION = 2;
+// A lone residue's own natural size defines "1 unit" at today's default box
+// size (so the common, already-fine case - a single monosaccharide - looks
+// exactly as it did before), and every other composition is scaled by the
+// SAME factor from there. That's the actual goal here: one monosaccharide
+// should render at roughly the same pixel size everywhere, so a structure
+// with more residues takes proportionally more room instead of being
+// squeezed/stretched to fit a fixed box regardless of how big it really is.
+const REFERENCE_SEQUENCE = SEQUENCE_LOOKUP['galnac'];
 
-const set_shape_vars = (el, ratio) => {
-  if ( ! el.isConnected) {
-    // This entry's summary was rebuilt (or scrolled out and discarded)
-    // before the measurement resolved - nothing to size any more.
-    return;
-  }
-  let height_fraction = Math.sqrt(1 / ratio);
-  height_fraction = Math.max(MIN_HEIGHT_FRACTION, Math.min(MAX_HEIGHT_FRACTION, height_fraction));
+// Sanity ceiling only - the panel itself is fixed (see its CSS), so this
+// just stops one pathological measurement from asking for an absurd box;
+// .site_summary's own max-height is what actually binds for a real
+// oversized structure, same graceful degrade as a missing icon.
+const MAX_FRACTION = 6;
+
+// A floor on width (and, symmetrically, height) specifically: a long
+// linear chain with no branches (e.g. the GAG-linker classes - 5 residues
+// in a straight line, see GAG_LINKER_STRUCTURES in msdata.packed.render
+// er.js) is tall enough that true-to-scale width shrinks well past what
+// ccg-sviewer-lite can actually contain cleanly, and the icon overflows its
+// box instead of shrinking with it. Floor stops that at the cost of no
+// longer being perfectly to-scale for the narrowest structures.
+const MIN_FRACTION = 0.6;
+
+// Branch points get extra spacing from the layout engine (reserved room
+// between siblings for visual clarity) well beyond what their residue
+// count alone would need, so a strictly linear per-residue scale
+// overshoots even modestly-branched structures (e.g. the 3-residue O-glycan
+// core 2, Gal(b1-3)[GlcNAc(b1-6)]GalNAc, came out too large). Raising the
+// measured ratio to this power compresses that growth - 1 is the
+// reference's own size unaffected either way, exponents below 1 shrink how
+// much bigger anything else looks without flattening differences away
+// entirely.
+const SCALE_EXPONENT = 0.6;
+
+const set_shape_vars = (el, size, reference_height) => {
+  // No isConnected check here: this also runs synchronously from
+  // apply_shape's cache-hit path, which fires from inside
+  // build_summary_elements - *before* the cloned entry has been inserted
+  // into the document at all. Checking isConnected here made every
+  // cache-hit (i.e. every render after a composition's first) silently
+  // skip setting the style, since the element was never connected yet at
+  // the point this ran. Staleness only needs checking on the genuinely
+  // async path (see apply_shape below), where the entry may have been
+  // rebuilt or removed by the time the measurement resolves.
+  let scale = 1 / reference_height;
+  let clamp = (v) => Math.max(MIN_FRACTION, Math.min(MAX_FRACTION, Math.pow(v, SCALE_EXPONENT)));
+  let height_fraction = clamp(size.height * scale);
+  let width_fraction = clamp(size.width * scale);
   el.style.setProperty('--entry-height-fraction', height_fraction.toFixed(3));
-  el.style.setProperty('--entry-width-fraction', (ratio * height_fraction).toFixed(3));
+  el.style.setProperty('--entry-width-fraction', width_fraction.toFixed(3));
 };
 
 const apply_shape = (el, sequence) => {
-  let cached = aspect_ratio_cache.get(sequence);
-  if (typeof cached === 'number') {
-    set_shape_vars(el, cached);
-    return;
-  }
-  measure_aspect_ratio(sequence).then( ratio => set_shape_vars(el, ratio) );
+  // Both measurements go through the same cache/promise-sharing machinery,
+  // so asking for the reference every time costs nothing once it's warm.
+  Promise.all([measure_natural_size(sequence), measure_natural_size(REFERENCE_SEQUENCE)])
+    .then( ([size, reference]) => {
+      if ( ! el.isConnected) {
+        // This entry's summary was rebuilt (or scrolled out and discarded)
+        // before the off-screen measurement resolved - nothing to size.
+        return;
+      }
+      set_shape_vars(el, size, reference.height);
+    });
 };
 
 const build_summary_elements = (summary) => {
@@ -500,7 +559,23 @@ class SummaryViewer extends GatorComponent {
       summaries.appendChild(new_entry);
       new_entry = summaries.lastElementChild;
       if (new_entry.querySelector('.sites').childNodes.length > 0) {
+        // new_entry's own classification here gates the CSS rule
+        // (input:checked+.summary_group.overflowed-content .sites) that
+        // widens .sites to 1000% once the group is opened - which moves
+        // the very element below being observed. Re-evaluating while
+        // open fed that geometry change back into this callback: toggle
+        // the class off, width snaps back, geometry shifts again, ratio
+        // crosses back over 0.1, toggle it back on - an infinite
+        // open/close loop once a composition's size put the ratio right
+        // at that threshold. Overflow only matters (and is only safe to
+        // reclassify) in the compact, collapsed view, so skip entirely
+        // while the group is checked - it keeps whatever classification
+        // it had from the last time it was collapsed.
+        let radio = new_entry.previousElementSibling;
         new IntersectionObserver(function([{intersectionRatio}]) {
+          if (radio && radio.checked) {
+            return;
+          }
           new_entry.classList.toggle('overflowed-content', intersectionRatio < 0.1);
         }, {root: new_entry}).observe(new_entry.querySelector('.sites').firstElementChild);
       }
